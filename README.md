@@ -1,54 +1,78 @@
-# TP-inicial-reconocimiento-facial
+Reconocimiento Facial con OpenCV y Gradio
 
-📊 Análisis de Producción y Asistencia
+Este proyecto es un prototipo de control de asistencia para una PYME alimenticia.
+Utiliza OpenCV para la detección y validación de rostros mediante el algoritmo LBPH (Local Binary Patterns Histograms).
 
-Este proyecto permite analizar datos de producción, empleados y asistencia en una panadería/repostería ficticia.
-Mediante un menú interactivo, se pueden generar visualizaciones y estadísticas sobre la producción diaria, desperdicio, desempeño de empleados y asistencia.
+🚀 ¿Cómo funciona?
 
-🛠️ Tecnologías utilizadas
+1 La cámara captura el rostro del empleado.
 
-Python 3.9+
-pandas → manejo y análisis de datos tabulares
-matplotlib → generación de gráficos
-seaborn → visualización estadística avanzada
+2 Con el modelo Haarcascade se detecta el área de la cara.
 
-📂 Estructura del proyecto
+3 Si existe un modelo entrenado con LBPH, se compara y se valida la identidad del empleado.
 
-Datos de Producción: información sobre cantidad producida, desperdicio, tiempo operativo y empleados asignados.
-Datos de Empleados: registro de legajos, nombres, puestos, turnos y sectores.
-Datos de Asistencia: control de ingreso, salida, horas trabajadas y posibles fraudes.
-Menú interactivo: permite acceder a distintos análisis y gráficos.
+4 Una vez validado, el sistema muestra en la interfaz el nombre del empleado y en consola se imprime el resultado.
 
-📋 Funcionalidades principales
+5 La sesión de captura se detiene automáticamente después de la validación.
 
-📈 Producción total diaria (todos los productos)
+Estructura del Proyecto
 
-📊 Producción promedio por producto
+├── src/
+│   ├── app_gradio.py               # Interfaz principal en Gradio
+│   └── enroll_lbph.py              # funciones de entrenamiento
+├── data/
+│   ├── empleados/
+│   │   └── ID_name_lastname       # Carpeta de fotos del empleado
+│   │       ├── img1.png            # Foto del empleado
+│   │       └── img2.png            # Foto del empleado
+│   └── modelos/
+│       ├── lbph.yml                # Modelo entrenado
+│       └── label_map.npy           # Diccionario de etiquetas
+└── README.md
 
-🥖 Desperdicio total vs producción efectiva
+⚙️ Requisitos:
 
-🚮 Porcentaje de desperdicio por producto
+    - Python 3.9 o superior
+    - pip install opencv-contrib-python numpy
 
-👨‍🍳 Producción promedio diaria por empleado
+🧪 Entrenamiento del modelo (LBPH)
 
-🔄 Promedio de asignación de empleados por producto
+    1 Agrega las fotos por empleado (frontal, bien iluminadas) en:
 
-⏱️ Promedio de horas trabajadas por empleado
+        data/empleados/
+        ├─ ID_NAME_LASTNAME/
+        │ ├─ img1.jpg
 
-⚠️ Intentos de fraude o irregularidades en asistencia
+    2 Entrená el modelo:
 
-📤 Exportación de datos a Excel
+        python -m src.utils.enroll_lbph
+        
+        se generaran los archivos data/modelos/lbph.yml y data/modelos/label_map.npy
 
-❌ Salir del sistema
 
-▶️ Pasos para ejecutar el proyecto
-1. Clonar o descargar el repositorio
+▶️ Cómo levantar la aplicación
 
-2. Crear y activar un entorno virtual
-python -m venv 
+    1 Desde la raíz de Deteccion de rostro, ejecutá:
 
-3. Instalar dependencias necesarias
-pip install pandas matplotlib seaborn openpyxl
+        $  uvicorn src.main:app --reload
+        Por defecto, la aplicación se abre en local: http://127.0.0.1:8000/app
 
-4. Ejecutar el script
-python visualizacion.py
+    2 Levantar en Ngrok
+
+        $ ngrok http 8000
+        se proporciona un URL de ngrok ej: https://c034727d6c74.ngrok-free.app/app
+    
+
+Como inicar el reconocimiento facial en el navegador:
+
+Pasos reconocimiento: 
+
+    1 Brindar permisos de camara
+
+    2 Comenzar reconocimiento -> click en "Iniciar reconocimiento facial"
+
+Verificacion de registros:
+
+    Para ver los registro del dia -> click en boton: "Ver registros del dia"
+
+--------------------------------------------------------------------------------------

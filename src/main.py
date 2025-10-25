@@ -17,7 +17,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # --- Modelos ---
 HAAR_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 face_cascade = cv2.CascadeClassifier(HAAR_PATH)
