@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime
-import cv2, numpy as np, os
+import cv2, numpy as np
 from pathlib import Path
 from src.utils import db
 
@@ -37,14 +37,11 @@ db.init_db()
 
 # --- MODELOS DE ENTRADA ---
 
-class EmpleadoIn(BaseModel):
+class UsuarioIn(BaseModel):
     legajo: int
     nombre: str
     apellido: str
-    dni: str
-    puesto: str
-    turno: str
-    sector: str
+    email: str
     rol: str = "OPERARIO"
 
 class RegistroIn(BaseModel):
@@ -55,34 +52,47 @@ class RegistroIn(BaseModel):
 class RolUpdate(BaseModel):
     rol: str
 
-# --- ENDPOINTS ---
 
-@app.post("/empleados")
-def add_empleado(emp: EmpleadoIn):
+# --- ENDPOINTS DE USUARIOS ---
+
+@app.get("/usuarios")
+def listar_usuarios():
+    """Listar todos los usuarios"""
     try:
-        emp_id = db.add_empleado_con_rol(emp)
-        # crear carpeta de fotos
-        emp_dir = FACES_DIR / str(emp.legajo)
-        emp_dir.mkdir(parents=True, exist_ok=True)
-        return {"id": emp_id, "message": "Empleado agregado correctamente"}
+        usuarios = db.fetch_usuarios()
+        return {"usuarios": usuarios}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error al insertar: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al obtener usuarios: {e}")
 
 
-@app.put("/empleados/{legajo}/rol")
+@app.post("/usuarios")
+def add_usuario(user: UsuarioIn):
+    """Alta de nuevo usuario"""
+    try:
+        user_id = db.add_usuario_con_rol(user)
+        user_dir = FACES_DIR / str(user.legajo)
+        user_dir.mkdir(parents=True, exist_ok=True)
+        return {"id": user_id, "message": "Usuario agregado correctamente"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al insertar usuario: {str(e)}")
+
+
+@app.put("/usuarios/{legajo}/rol")
 def update_rol(legajo: int, body: RolUpdate):
-    updated = db.update_empleado_rol(legajo, body.rol)
+    """Modificar el rol de un usuario"""
+    updated = db.update_usuario_rol(legajo, body.rol)
     if updated == 0:
-        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return {"legajo": legajo, "rol": body.rol, "message": "Rol actualizado correctamente"}
 
 
-# --- NUEVO: SUBIR FOTOS PARA RECONOCIMIENTO ---
+# --- SUBIDA DE FOTOS ---
 
-@app.post("/empleados/{legajo}/fotos")
+@app.post("/usuarios/{legajo}/fotos")
 async def upload_fotos(legajo: int, files: list[UploadFile] = File(...)):
-    emp_dir = FACES_DIR / str(legajo)
-    emp_dir.mkdir(parents=True, exist_ok=True)
+    """Subir fotos para el usuario (opcional para reconocimiento futuro)"""
+    user_dir = FACES_DIR / str(legajo)
+    user_dir.mkdir(parents=True, exist_ok=True)
 
     saved_files = []
     for file in files:
@@ -98,7 +108,7 @@ async def upload_fotos(legajo: int, files: list[UploadFile] = File(...)):
         for i, (x, y, w, h) in enumerate(faces):
             face = gray[y:y+h, x:x+w]
             face_resized = cv2.resize(face, (200, 200))
-            fname = emp_dir / f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}_{i}.jpg"
+            fname = user_dir / f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}_{i}.jpg"
             cv2.imwrite(str(fname), face_resized)
             saved_files.append(str(fname))
 
@@ -109,64 +119,30 @@ async def upload_fotos(legajo: int, files: list[UploadFile] = File(...)):
     return {"message": f"{len(saved_files)} fotos guardadas y modelo actualizado", "files": saved_files}
 
 
-@app.get("/empleados/{legajo}/fotos")
+@app.get("/usuarios/{legajo}/fotos")
 def listar_fotos(legajo: int):
-    emp_dir = FACES_DIR / str(legajo)
-    if not emp_dir.exists():
-        raise HTTPException(status_code=404, detail="No hay fotos para este legajo")
-    fotos = [f"/{emp_dir}/{f.name}" for f in emp_dir.iterdir() if f.is_file()]
+    """Listar fotos del usuario"""
+    user_dir = FACES_DIR / str(legajo)
+    if not user_dir.exists():
+        raise HTTPException(status_code=404, detail="No hay fotos para este usuario")
+    fotos = [f"/{user_dir}/{f.name}" for f in user_dir.iterdir() if f.is_file()]
     return {"legajo": legajo, "fotos": fotos}
 
 
-@app.post("/detect")
-async def detect_face(file: UploadFile = File(...)):
-    contents = await file.read()
-    nparr = np.frombuffer(contents, np.uint8)
-    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(80, 80))
-
-    response = []
-    for (x, y, w, h) in faces:
-        roi_gray = gray[y:y+h, x:x+w]
-        msg, saved, legajo, nombre, evento = "❌ Persona no reconocida", False, None, None, None
-
-        if recognizer and label_map:
-            roi_resized = cv2.resize(roi_gray, (200, 200))
-            label_id, conf = recognizer.predict(roi_resized)
-            if label_id in label_map and conf < 80:
-                label_txt = label_map[label_id]
-                msg = f"✅ Validado: {label_txt} (conf={conf:.1f})"
-                legajo, nombre = db.parse_label(label_txt)
-                evento = db.infer_event_type(legajo)
-                db.save_attendance(legajo, nombre, evento)
-                saved = True
-
-        response.append({
-            "x": int(x), "y": int(y), "w": int(w), "h": int(h),
-            "message": msg, "saved": saved, "legajo": legajo,
-            "nombre": nombre, "evento": evento
-        })
-
-    return {"faces": response}
-
-
-@app.get("/attendance/today")
-def attendance_today():
-    return db.fetch_attendance_today()
-
+# --- REGISTROS (para asistencia u otro evento) ---
 
 @app.post("/registros")
 def add_registro(reg: RegistroIn):
+    """Registrar evento de usuario (ingreso/egreso u otro tipo)"""
     if reg.evento not in ("INGRESO", "EGRESO"):
         raise HTTPException(status_code=400, detail="Evento inválido")
     ts = reg.ts_utc or datetime.utcnow().isoformat(timespec="seconds")
     conn = db.get_conn()
     try:
-        id_emp = db._ensure_empleado_by_legajo(reg.legajo, "")
+        id_usr = db._ensure_usuario_by_legajo(reg.legajo, "")
         cur = conn.execute(
-            "INSERT INTO registros (id_empleado, ts_utc, evento) VALUES (?, ?, ?)",
-            (id_emp, ts, reg.evento)
+            "INSERT INTO registros (id_usuario, ts_utc, evento) VALUES (?, ?, ?)",
+            (id_usr, ts, reg.evento)
         )
         conn.commit()
         return {"id_registro": cur.lastrowid, "message": "Registro agregado correctamente"}
@@ -174,23 +150,29 @@ def add_registro(reg: RegistroIn):
         conn.close()
 
 
-# --- FUNCIÓN DE ENTRENAMIENTO ---
+@app.get("/attendance/today")
+def attendance_today():
+    """Listar registros de hoy"""
+    return db.fetch_attendance_today()
+
+
+# --- FUNCIÓN DE ENTRENAMIENTO (opcional reconocimiento facial futuro) ---
 
 def _retrain_model():
     global recognizer, label_map
     faces, labels, label_map = [], [], {}
     current_label = 0
 
-    for emp_dir in FACES_DIR.iterdir():
-        if not emp_dir.is_dir():
+    for user_dir in FACES_DIR.iterdir():
+        if not user_dir.is_dir():
             continue
-        for img_path in emp_dir.iterdir():
+        for img_path in user_dir.iterdir():
             img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
             if img is None:
                 continue
             faces.append(img)
             labels.append(current_label)
-        label_map[current_label] = str(emp_dir.name)
+        label_map[current_label] = str(user_dir.name)
         current_label += 1
 
     if not faces:
@@ -200,3 +182,4 @@ def _retrain_model():
     recognizer.train(faces, np.array(labels))
     recognizer.save(str(MODEL_PATH))
     np.save(str(LABELS_PATH), label_map)
+    
