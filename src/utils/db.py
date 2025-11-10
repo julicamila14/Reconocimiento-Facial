@@ -70,9 +70,11 @@ def fetch_usuarios():
     finally:
         conn.close()
 
+
 def add_usuario_con_rol(user):
     conn = get_conn()
     try:
+        # 1️⃣ Insertar usuario en tabla usuarios
         cur = conn.execute(
             """
             INSERT INTO usuarios (legajo, nombre, apellido, email, rol)
@@ -80,19 +82,44 @@ def add_usuario_con_rol(user):
             """,
             (user.legajo, user.nombre, user.apellido, user.email, user.rol)
         )
+
+        # 2️⃣ Crear también el empleado asociado (si no existe)
+        existe = conn.execute(
+            "SELECT id FROM empleados WHERE legajo = ?", (user.legajo,)
+        ).fetchone()
+
+        if not existe:
+            conn.execute(
+                """
+                INSERT INTO empleados (legajo, nombre, apellido, dni, puesto, turno, sector, rol)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user.legajo,
+                    user.nombre,
+                    user.apellido,
+                    "N/A",  # DNI por defecto
+                    "N/A",  # Puesto
+                    "N/A",  # Turno
+                    "N/A",  # Sector
+                    user.rol
+                )
+            )
+
         conn.commit()
         return cur.lastrowid
     finally:
         conn.close()
 
+
 def update_usuario_rol(legajo, nuevo_rol):
     conn = get_conn()
     try:
-        cur = conn.execute(
-            "UPDATE usuarios SET rol = ? WHERE legajo = ?", (nuevo_rol, legajo)
-        )
+        # Actualiza el rol tanto en usuarios como empleados
+        conn.execute("UPDATE usuarios SET rol = ? WHERE legajo = ?", (nuevo_rol, legajo))
+        conn.execute("UPDATE empleados SET rol = ? WHERE legajo = ?", (nuevo_rol, legajo))
         conn.commit()
-        return cur.rowcount
+        return True
     finally:
         conn.close()
 
