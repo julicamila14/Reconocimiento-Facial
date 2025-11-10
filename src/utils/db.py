@@ -7,6 +7,7 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 DDL = """
 PRAGMA journal_mode=WAL;
+
 CREATE TABLE IF NOT EXISTS empleados (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   legajo INTEGER NOT NULL UNIQUE,
@@ -18,12 +19,22 @@ CREATE TABLE IF NOT EXISTS empleados (
   sector TEXT NOT NULL,
   rol TEXT NOT NULL DEFAULT 'OPERARIO'
 );
+
 CREATE TABLE IF NOT EXISTS registros (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   id_empleado INTEGER NOT NULL,
   ts_utc TEXT NOT NULL,
   evento TEXT NOT NULL,
   FOREIGN KEY(id_empleado) REFERENCES empleados(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  legajo INTEGER NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
+  apellido TEXT NOT NULL,
+  email TEXT NOT NULL,
+  rol TEXT NOT NULL DEFAULT 'OPERARIO'
 );
 """
 
@@ -46,19 +57,48 @@ def init_db():
         conn.close()
 
 # -------------------------
-# Utilidades
+# Usuarios
 # -------------------------
-def parse_label(label: str):
-    if not label:
-        return None, None
-    clean = label.replace("-", "_")
-    parts = clean.split("_")
-    if len(parts) >= 2:
-        emp_id = parts[0]
-        name = " ".join(parts[1:]).strip().replace("  ", " ")
-        return emp_id, name
-    return label, label
+def fetch_usuarios():
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT legajo, nombre, apellido, email, rol FROM usuarios ORDER BY legajo"
+        ).fetchall()
+        cols = ["legajo", "nombre", "apellido", "email", "rol"]
+        return [dict(zip(cols, r)) for r in rows]
+    finally:
+        conn.close()
 
+def add_usuario_con_rol(user):
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO usuarios (legajo, nombre, apellido, email, rol)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (user.legajo, user.nombre, user.apellido, user.email, user.rol)
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+def update_usuario_rol(legajo, nuevo_rol):
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE usuarios SET rol = ? WHERE legajo = ?", (nuevo_rol, legajo)
+        )
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+# -------------------------
+# Empleados (asistencia)
+# -------------------------
 def _get_empleado_id_by_legajo(legajo: int):
     conn = get_conn()
     try:
@@ -89,47 +129,6 @@ def _ensure_empleado_by_legajo(legajo: int, nombre_completo: str, rol: str = "OP
         return cur.lastrowid
     finally:
         conn.close()
-
-# -------------------------
-# Consultas de negocio
-# -------------------------
-def get_last_event(emp_id: str, days: int = 1):
-    if not emp_id:
-        return None
-
-    try:
-        legajo = int(emp_id)
-    except (TypeError, ValueError):
-        return None
-
-    id_empleado = _get_empleado_id_by_legajo(legajo)
-    if id_empleado is None:
-        return None
-
-    dt_from = (datetime.utcnow() - timedelta(days=days)).isoformat(timespec="seconds")
-    conn = get_conn()
-    try:
-        row = conn.execute(
-            """
-            SELECT evento, ts_utc
-            FROM registros
-            WHERE id_empleado = ? AND ts_utc >= ?
-            ORDER BY ts_utc DESC
-            LIMIT 1
-            """,
-            (id_empleado, dt_from),
-        ).fetchone()
-        if row:
-            return {"evento": row[0], "ts_utc": row[1]}
-        return None
-    finally:
-        conn.close()
-
-def infer_event_type(emp_id: str) -> str:
-    last = get_last_event(emp_id, days=1)
-    if not last or last["evento"] in (None, "EGRESO"):
-        return "INGRESO"
-    return "EGRESO"
 
 def fetch_attendance_today():
     today = datetime.now().date()
@@ -179,10 +178,10 @@ def save_attendance(legajo: str, name: str, event: str, rol: str = "OPERARIO") -
     finally:
         conn.close()
 
-
 # -------------------------
-# Inicialización si se ejecuta directo
+# Inicialización directa
 # -------------------------
 if __name__ == "__main__":
     init_db()
-    print("Base de datos inicializada con campo 'rol'.")
+    print("Base de datos inicializada con tablas empleados, registros y usuarios.")
+    
