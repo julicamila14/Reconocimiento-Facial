@@ -1,3 +1,4 @@
+import sqlite3
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +7,27 @@ from pathlib import Path
 from src.utils import db
 from fastapi.staticfiles import StaticFiles
 
+def ensure_rol_column_exists():
+    DB_PATH = Path("data/db/attendance.db")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Revisar si ya existe la columna 'rol'
+    cursor.execute("PRAGMA table_info(empleados);")
+    columnas = [col[1] for col in cursor.fetchall()]
+
+    if "rol" not in columnas:
+        print("🛠 Agregando columna 'rol' a la tabla empleados...")
+        cursor.execute("ALTER TABLE empleados ADD COLUMN rol TEXT NOT NULL DEFAULT 'OPERARIO';")
+        conn.commit()
+        print("✅ Columna 'rol' agregada correctamente.")
+    else:
+        print("✔ Columna 'rol' ya existe.")
+
+    conn.close()
+
+# Ejecutar al iniciar el backend
+ensure_rol_column_exists()
 app = FastAPI()
 app.mount("/app",StaticFiles(directory="src/web",html=True),name="static")
 
