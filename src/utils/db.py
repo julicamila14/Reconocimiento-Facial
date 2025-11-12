@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
 def get_conn():
     conn = sqlite3.connect(DB_PATH, timeout=5, isolation_level=None)
     conn.execute("PRAGMA foreign_keys=ON;")
+    conn.row_factory = sqlite3.Row  
     return conn
 
 def init_db():
@@ -211,11 +212,11 @@ def get_usuario_by_legajo(legajo: int):
         cur = conn.execute("SELECT * FROM usuarios WHERE legajo = ?", (legajo,))
         row = cur.fetchone()
         if row:
-            return dict(row)
+            return dict(row) 
         return None
     finally:
         conn.close()
-        
+
 if __name__ == "__main__":
     init_db()
     print("Base de datos inicializada con tablas empleados, registros y usuarios.")
