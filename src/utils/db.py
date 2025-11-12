@@ -74,18 +74,27 @@ def fetch_usuarios():
 def add_usuario_con_rol(user):
     conn = get_conn()
     try:
-        # 1️⃣ Insertar usuario en tabla usuarios
+        if not isinstance(user, dict):
+            user = user.dict()
+
+        legajo = user.get("legajo")
+        nombre = user.get("nombre")
+        apellido = user.get("apellido")
+        email = user.get("email")
+        rol = user.get("rol", "OPERARIO")
+
+        # Insertar usuario
         cur = conn.execute(
             """
             INSERT INTO usuarios (legajo, nombre, apellido, email, rol)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (user.legajo, user.nombre, user.apellido, user.email, user.rol)
+            (legajo, nombre, apellido, email, rol),
         )
 
-        # 2️⃣ Crear también el empleado asociado (si no existe)
+        # Crear empleado asociado si no existe
         existe = conn.execute(
-            "SELECT id FROM empleados WHERE legajo = ?", (user.legajo,)
+            "SELECT id FROM empleados WHERE legajo = ?", (legajo,)
         ).fetchone()
 
         if not existe:
@@ -94,16 +103,7 @@ def add_usuario_con_rol(user):
                 INSERT INTO empleados (legajo, nombre, apellido, dni, puesto, turno, sector, rol)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    user.legajo,
-                    user.nombre,
-                    user.apellido,
-                    "N/A",  # DNI por defecto
-                    "N/A",  # Puesto
-                    "N/A",  # Turno
-                    "N/A",  # Sector
-                    user.rol
-                )
+                (legajo, nombre, apellido, "N/A", "N/A", "N/A", "N/A", rol),
             )
 
         conn.commit()
@@ -205,10 +205,9 @@ def save_attendance(legajo: str, name: str, event: str, rol: str = "OPERARIO") -
     finally:
         conn.close()
 
-# -------------------------
-# Inicialización directa
-# -------------------------
+
 if __name__ == "__main__":
     init_db()
     print("Base de datos inicializada con tablas empleados, registros y usuarios.")
+
     
