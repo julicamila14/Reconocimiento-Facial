@@ -205,9 +205,18 @@ def save_attendance(legajo: str, name: str, event: str, rol: str = "OPERARIO") -
     finally:
         conn.close()
 
-
+def get_usuario_by_legajo(legajo: int):
+    conn = get_conn()
+    try:
+        cur = conn.execute("SELECT * FROM usuarios WHERE legajo = ?", (legajo,))
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+        return None
+    finally:
+        conn.close()
+        
 if __name__ == "__main__":
     init_db()
     print("Base de datos inicializada con tablas empleados, registros y usuarios.")
 
-    

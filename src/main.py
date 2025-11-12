@@ -155,6 +155,16 @@ def attendance_today():
     """Listar registros de hoy"""
     return db.fetch_attendance_today()
 
+@app.get("/usuarios/{legajo}")
+def get_usuario(legajo: int):
+    """Obtener un usuario por legajo"""
+    try:
+        usuario = db.get_usuario_by_legajo(legajo)
+        if not usuario:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        return usuario
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener usuario: {e}")
 
 # --- FUNCIÓN DE ENTRENAMIENTO (opcional reconocimiento facial futuro) ---
 
